@@ -1,6 +1,8 @@
 use crate::app::asar::AsarArchive;
 use crate::domain::compute_sha256;
-use crate::native::{analyze_elf, analyze_macho, analyze_pe, disassemble_x86_64, RelroStatus};
+use crate::native::{
+    analyze_elf, analyze_macho, analyze_pe, decode_universal_slice, RelroStatus, TargetArch,
+};
 use colored::*;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
@@ -175,7 +177,7 @@ pub fn cmd_mitigations(path: &Path) -> anyhow::Result<()> {
     anyhow::bail!("Could not parse binary to extract mitigations");
 }
 
-pub fn cmd_disasm(path: &Path, offset: u64, length: usize, max_instr: usize) -> anyhow::Result<()> {
+pub fn cmd_disasm(path: &Path, offset: u64, length: usize, max_instr: usize, arch_str: &str) -> anyhow::Result<()> {
     let bytes = fs::read(path)?;
     let start = offset as usize;
     if start >= bytes.len() {
@@ -185,9 +187,10 @@ pub fn cmd_disasm(path: &Path, offset: u64, length: usize, max_instr: usize) -> 
     let end = (start + length).min(bytes.len());
     let slice = &bytes[start..end];
 
-    let instructions = disassemble_x86_64(slice, offset, max_instr)?;
+    let arch: TargetArch = arch_str.parse()?;
+    let instructions = decode_universal_slice(slice, offset, arch, max_instr)?;
 
-    println!("\n{}", format!("=== Disassembly at 0x{:x} ({}) ===", offset, path.display()).cyan().bold());
+    println!("\n{}", format!("=== Disassembly at 0x{:x} ({:?}) [{}] ===", offset, arch, path.display()).cyan().bold());
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);

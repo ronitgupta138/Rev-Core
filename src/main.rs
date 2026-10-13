@@ -33,7 +33,7 @@ enum Commands {
         file: PathBuf,
     },
 
-    /// Disassemble raw x86_64 machine code instructions at an offset
+    /// Disassemble machine code instructions (x86_64, arm64, riscv64) at an offset
     Disasm {
         /// Target binary file path
         file: PathBuf,
@@ -46,6 +46,9 @@ enum Commands {
         /// Maximum number of instructions to format
         #[arg(long, default_value_t = 20)]
         count: usize,
+        /// Target architecture: x86_64, arm64, or riscv64
+        #[arg(long, default_value = "x86_64")]
+        arch: String,
     },
 
     /// Reconstruct Control Flow Graph (CFG) and basic blocks from code slice
@@ -153,13 +156,14 @@ async fn main() -> anyhow::Result<()> {
             offset,
             length,
             count,
+            arch,
         } => {
             let parsed_offset = if offset.starts_with("0x") || offset.starts_with("0X") {
                 u64::from_str_radix(&offset[2..], 16)?
             } else {
                 offset.parse::<u64>()?
             };
-            cmd_disasm(&file, parsed_offset, length, count)?;
+            cmd_disasm(&file, parsed_offset, length, count, &arch)?;
         }
         Commands::Cfg {
             file,
