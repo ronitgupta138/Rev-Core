@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea or new reverse engineering capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: We welcome proposals for new binary formats, instruction decoders, and MCP tools.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a specific workflow or problem?
+      description: Describe the reverse-engineering limitation or use case.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution & Technical Interface
+      description: Describe what the CLI command or MCP tool signature should look like.
+    validations:
+      required: true

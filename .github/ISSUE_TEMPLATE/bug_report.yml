@@ -1,0 +1,27 @@
+name: Bug report
+description: Create a report to help us improve rev-core
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting an issue! Please provide reproduction details below.
+  - type: input
+    id: binary_format
+    attributes:
+      label: Target Binary Format / App
+      description: e.g. Linux ELF64, Windows PE32+, Mach-O, WASM, Electron ASAR
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: How did you run rev-core? What command or MCP tool was invoked?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Actual Behavior
+    validations:
+      required: true
