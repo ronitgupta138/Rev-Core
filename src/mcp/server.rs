@@ -122,6 +122,34 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "analyze_entropy".into(),
+                description: "Compute Shannon entropy across file bytes to detect packed, compressed, or encrypted payloads.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to target file"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
+                name: "scan_crypto".into(),
+                description: "Scan target file for known cryptographic initialization constants (AES S-Box, ChaCha20, SHA, MD5).".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to target file"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -379,6 +407,44 @@ impl McpServer {
                     },
                     Err(e) => error_result(format!("Failed to parse ASAR archive: {e}")),
                 }
+            }
+
+            "analyze_entropy" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let bytes = match fs::read(path_str) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file: {e}")),
+                };
+
+                let digest = compute_sha256(&bytes);
+                let report = crate::analysis::analyze_entropy(&bytes);
+                let evidence = Evidence::new(path_str, &digest, "analyze_entropy", &report, Vec::new());
+                if let Ok(mut l) = self.ledger.lock() {
+                    l.record(&evidence);
+                }
+                json_result(&evidence)
+            }
+
+            "scan_crypto" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let bytes = match fs::read(path_str) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file: {e}")),
+                };
+
+                let digest = compute_sha256(&bytes);
+                let findings = crate::analysis::scan_crypto_constants(&bytes);
+                let evidence = Evidence::new(path_str, &digest, "scan_crypto", &findings, Vec::new());
+                if let Ok(mut l) = self.ledger.lock() {
+                    l.record(&evidence);
+                }
+                json_result(&evidence)
             }
 
             "get_evidence_ledger" => {
