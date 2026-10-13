@@ -196,6 +196,27 @@ pub fn cmd_asar_list(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn cmd_cfg(path: &Path, offset: u64, max_instr: usize, format: &str) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let start = offset as usize;
+    if start >= bytes.len() {
+        anyhow::bail!("Offset 0x{:x} is outside binary boundaries ({} bytes)", offset, bytes.len());
+    }
+
+    let slice = &bytes[start..];
+    let cfg = crate::native::build_cfg_x86_64(slice, offset, max_instr)?;
+
+    println!("\n{}", format!("=== Control Flow Graph for: {} at 0x{:x} ===", path.display(), offset).cyan().bold());
+    println!("{}", cfg.to_ascii_summary().yellow());
+
+    if format.to_lowercase() == "mermaid" {
+        println!("\n{}", "--- Mermaid Diagram ---".bold());
+        println!("```mermaid\n{}\n```", cfg.to_mermaid());
+    }
+
+    Ok(())
+}
+
 pub fn cmd_asar_unpack(path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
     println!("\n{}", format!("Unpacking ASAR: {} -> {}", path.display(), dest_dir.display()).cyan().bold());
     let archive = AsarArchive::open(path)?;

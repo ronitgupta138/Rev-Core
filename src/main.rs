@@ -48,6 +48,21 @@ enum Commands {
         count: usize,
     },
 
+    /// Reconstruct Control Flow Graph (CFG) and basic blocks from code slice
+    Cfg {
+        /// Target binary file path
+        file: PathBuf,
+        /// Byte offset in file (decimal or 0x hex)
+        #[arg(long, default_value = "0")]
+        offset: String,
+        /// Maximum number of instructions to process
+        #[arg(long, default_value_t = 100)]
+        max_instructions: usize,
+        /// Diagram format: ascii or mermaid
+        #[arg(long, default_value = "mermaid")]
+        format: String,
+    },
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -101,6 +116,19 @@ async fn main() -> anyhow::Result<()> {
                 offset.parse::<u64>()?
             };
             cmd_disasm(&file, parsed_offset, length, count)?;
+        }
+        Commands::Cfg {
+            file,
+            offset,
+            max_instructions,
+            format,
+        } => {
+            let parsed_offset = if offset.starts_with("0x") || offset.starts_with("0X") {
+                u64::from_str_radix(&offset[2..], 16)?
+            } else {
+                offset.parse::<u64>()?
+            };
+            cmd_cfg(&file, parsed_offset, max_instructions, &format)?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {
