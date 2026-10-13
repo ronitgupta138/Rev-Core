@@ -63,6 +63,18 @@ enum Commands {
         format: String,
     },
 
+    /// Calculate Shannon entropy to detect packed, compressed or encrypted sections
+    Entropy {
+        /// Target file path
+        file: PathBuf,
+    },
+
+    /// Scan binary for cryptographic state constants (AES, ChaCha20, SHA, MD5)
+    Crypto {
+        /// Target file path
+        file: PathBuf,
+    },
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -129,6 +141,12 @@ async fn main() -> anyhow::Result<()> {
                 offset.parse::<u64>()?
             };
             cmd_cfg(&file, parsed_offset, max_instructions, &format)?;
+        }
+        Commands::Entropy { file } => {
+            cmd_entropy(&file)?;
+        }
+        Commands::Crypto { file } => {
+            cmd_crypto(&file)?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {

@@ -217,6 +217,53 @@ pub fn cmd_cfg(path: &Path, offset: u64, max_instr: usize, format: &str) -> anyh
     Ok(())
 }
 
+pub fn cmd_entropy(path: &Path) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let report = crate::analysis::analyze_entropy(&bytes);
+
+    println!("\n{}", format!("=== Shannon Entropy Analysis: {} ===", path.display()).cyan().bold());
+    println!("Total Bytes: {}", report.total_bytes.to_string().yellow());
+    println!("Calculated Entropy: {:.4} / 8.0000", report.entropy);
+    println!("Classification: {}", report.classification.green().bold());
+    if report.is_likely_packed {
+        println!("{}", "(!) Warning: High entropy indicates compressed, encrypted, or packed payload.".red().bold());
+    }
+    println!();
+    Ok(())
+}
+
+pub fn cmd_crypto(path: &Path) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let findings = crate::analysis::scan_crypto_constants(&bytes);
+
+    println!("\n{}", format!("=== Cryptographic Magic Signature Scan: {} ===", path.display()).cyan().bold());
+    if findings.is_empty() {
+        println!("{}", "No standard hardcoded cryptographic state constants detected.".yellow());
+        return Ok(());
+    }
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Algorithm").fg(Color::Cyan),
+        Cell::new("Offset").fg(Color::DarkGrey),
+        Cell::new("Description").fg(Color::Green),
+        Cell::new("Confidence").fg(Color::Yellow),
+    ]);
+
+    for f in findings {
+        table.add_row(vec![
+            Cell::new(&f.algorithm),
+            Cell::new(format!("0x{:x}", f.offset)),
+            Cell::new(&f.description),
+            Cell::new(format!("{:.0}%", f.confidence * 100.0)),
+        ]);
+    }
+
+    println!("{}\n", table);
+    Ok(())
+}
+
 pub fn cmd_asar_unpack(path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
     println!("\n{}", format!("Unpacking ASAR: {} -> {}", path.display(), dest_dir.display()).cyan().bold());
     let archive = AsarArchive::open(path)?;
