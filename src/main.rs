@@ -75,6 +75,12 @@ enum Commands {
         file: PathBuf,
     },
 
+    /// Scan Electron application directory for IPC attack surfaces and security postures
+    Electron {
+        /// Directory containing extracted Electron app files
+        dir: PathBuf,
+    },
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -147,6 +153,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Crypto { file } => {
             cmd_crypto(&file)?;
+        }
+        Commands::Electron { dir } => {
+            cmd_electron(&dir)?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {

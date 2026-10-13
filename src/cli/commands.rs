@@ -264,6 +264,44 @@ pub fn cmd_crypto(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn cmd_electron(path: &Path) -> anyhow::Result<()> {
+    let report = crate::app::scan_electron_directory(path)?;
+
+    println!("\n{}", format!("=== Electron Application Security Scan: {} ===", path.display()).cyan().bold());
+    println!("Total Script Files Analyzed: {}", report.total_script_files.to_string().yellow());
+    println!("Identified IPC Endpoints: {}", report.ipc_channels.len().to_string().green());
+    println!("Security Risk Score: {} / 100", if report.risk_score > 50 { report.risk_score.to_string().red().bold() } else { report.risk_score.to_string().green() });
+
+    if !report.risk_summary.is_empty() {
+        println!("\n{}", "Identified Security Flags & Risks:".bold());
+        for risk in &report.risk_summary {
+            println!("  [!] {}", risk.red());
+        }
+    }
+
+    if !report.ipc_channels.is_empty() {
+        println!("\n{}", "IPC Communication Channels:".bold());
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        table.set_header(vec![
+            Cell::new("Channel Name").fg(Color::Cyan),
+            Cell::new("Direction / Type").fg(Color::Green),
+            Cell::new("Source Location").fg(Color::Yellow),
+        ]);
+
+        for c in &report.ipc_channels {
+            table.add_row(vec![
+                Cell::new(&c.channel),
+                Cell::new(&c.call_type),
+                Cell::new(format!("{}:{}", c.file, c.line)),
+            ]);
+        }
+        println!("{}\n", table);
+    }
+
+    Ok(())
+}
+
 pub fn cmd_asar_unpack(path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
     println!("\n{}", format!("Unpacking ASAR: {} -> {}", path.display(), dest_dir.display()).cyan().bold());
     let archive = AsarArchive::open(path)?;
