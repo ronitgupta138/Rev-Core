@@ -98,6 +98,30 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "generate_cfg".into(),
+                description: "Reconstruct the Control Flow Graph (CFG), basic blocks, and branch targets from machine code, returning cyclomatic complexity and Mermaid diagram.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to binary file"
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Byte offset where function or code begins",
+                            "default": 0
+                        },
+                        "max_instructions": {
+                            "type": "integer",
+                            "description": "Maximum instructions to trace (defaults to 100)",
+                            "default": 100
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -285,6 +309,46 @@ impl McpServer {
                         json_result(&evidence)
                     }
                     Err(e) => error_result(format!("Disassembly error: {e}")),
+                }
+            }
+
+            "generate_cfg" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let max_instr = args.get("max_instructions").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+
+                let bytes = match fs::read(path_str) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file: {e}")),
+                };
+
+                if offset >= bytes.len() {
+                    return error_result(format!("Offset {offset} is beyond file length ({})", bytes.len()));
+                }
+
+                let slice = &bytes[offset..];
+                match crate::native::build_cfg_x86_64(slice, offset as u64, max_instr) {
+                    Ok(cfg) => {
+                        let digest = compute_sha256(slice);
+                        let mermaid = cfg.to_mermaid();
+                        let result_payload = json!({
+                            "entry_ip": format!("0x{:x}", cfg.entry_ip),
+                            "total_blocks": cfg.blocks.len(),
+                            "total_instructions": cfg.total_instructions,
+                            "cyclomatic_complexity": cfg.cyclomatic_complexity,
+                            "mermaid_diagram": mermaid,
+                            "blocks": cfg.blocks,
+                        });
+                        let evidence = Evidence::new(path_str, &digest, "generate_cfg.x86_64", &result_payload, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("CFG generation error: {e}")),
                 }
             }
 
