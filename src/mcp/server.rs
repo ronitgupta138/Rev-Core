@@ -178,6 +178,29 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "decompile_symbol".into(),
+                description: "Decompile a function symbol into C pseudocode using local headless decompiler bridges (rizin, radare2, or ghidra).".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to binary file"
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": "Function symbol name (e.g. main, _start) or hex address"
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Maximum execution time in seconds",
+                            "default": 30
+                        }
+                    },
+                    "required": ["path", "symbol"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -257,14 +280,14 @@ impl McpServer {
                 let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
-                let result = self.execute_tool(tool_name, args);
+                let result = self.execute_tool(tool_name, args).await;
                 Some(JsonRpcResponse::success(id, serde_json::to_value(result).unwrap_or(json!({}))))
             }
             _ => Some(JsonRpcResponse::error(id, -32601, format!("Unknown method: {}", req.method))),
         }
     }
 
-    fn execute_tool(&self, name: &str, args: Value) -> McpToolCallResult {
+    async fn execute_tool(&self, name: &str, args: Value) -> McpToolCallResult {
         match name {
             "inspect_binary" => {
                 let path_str = match args.get("path").and_then(|v| v.as_str()) {
@@ -531,6 +554,30 @@ impl McpServer {
                         json_result(&evidence)
                     }
                     Err(e) => error_result(format!("Failed to parse WASM module: {e}")),
+                }
+            }
+
+            "decompile_symbol" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let symbol = match args.get("symbol").and_then(|v| v.as_str()) {
+                    Some(s) => s,
+                    None => return error_result("Missing required argument: 'symbol'"),
+                };
+                let timeout_secs = args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(30);
+
+                match crate::bridge::DecompilerBridge::decompile_symbol(path_str, symbol, timeout_secs).await {
+                    Ok(func) => {
+                        let digest = compute_sha256(path_str.as_bytes());
+                        let evidence = Evidence::new(path_str, &digest, "decompile_symbol", &func, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Decompilation failed: {e}")),
                 }
             }
 
