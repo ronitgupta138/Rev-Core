@@ -5,4 +5,5 @@ pub mod cli;
 pub mod domain;
 pub mod mcp;
 pub mod native;
+pub mod process;
 pub mod wasm;
