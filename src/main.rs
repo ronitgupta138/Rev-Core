@@ -87,6 +87,20 @@ enum Commands {
         file: PathBuf,
     },
 
+    /// Decompile a symbol using an external headless decompiler (rizin/radare2/ghidra)
+    Decompile {
+        /// Target binary file path
+        file: PathBuf,
+        /// Function symbol name or hex address
+        symbol: String,
+        /// Maximum timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
+
+    /// List available external headless decompiler backends installed on this system
+    Backends,
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -165,6 +179,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Wasm { file } => {
             cmd_wasm(&file)?;
+        }
+        Commands::Decompile { file, symbol, timeout } => {
+            cmd_decompile(&file, &symbol, timeout)?;
+        }
+        Commands::Backends => {
+            cmd_backends()?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {

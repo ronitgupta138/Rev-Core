@@ -354,6 +354,46 @@ pub fn cmd_wasm(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn cmd_backends() -> anyhow::Result<()> {
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let backends = crate::bridge::DecompilerBridge::detect_backends().await;
+        println!("\n{}", "=== Headless Decompiler Backends ===".cyan().bold());
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        table.set_header(vec![
+            Cell::new("Decompiler Engine").fg(Color::Cyan),
+            Cell::new("Status").fg(Color::Yellow),
+            Cell::new("Binary Path").fg(Color::Green),
+        ]);
+        for b in backends {
+            let (status, color) = if b.available { ("Available", Color::Green) } else { ("Not Installed", Color::Red) };
+            table.add_row(vec![
+                Cell::new(&b.backend),
+                Cell::new(status).fg(color),
+                Cell::new(b.path.as_deref().unwrap_or("None")),
+            ]);
+        }
+        println!("{}\n", table);
+    });
+    Ok(())
+}
+
+pub fn cmd_decompile(path: &Path, symbol: &str, timeout_secs: u64) -> anyhow::Result<()> {
+    tokio::runtime::Runtime::new()?.block_on(async {
+        println!("\n{}", format!("Decompiling symbol '{}' in {}...", symbol, path.display()).cyan().bold());
+        match crate::bridge::DecompilerBridge::decompile_symbol(path, symbol, timeout_secs).await {
+            Ok(func) => {
+                println!("{}", format!("Decompiled via {} (in {}ms):\n", func.backend, func.execution_time_ms).green().bold());
+                println!("{}\n", func.pseudocode);
+            }
+            Err(e) => {
+                eprintln!("\n{}", format!("Decompilation Note: {e}").yellow());
+            }
+        }
+    });
+    Ok(())
+}
+
 pub fn cmd_electron(path: &Path) -> anyhow::Result<()> {
     let report = crate::app::scan_electron_directory(path)?;
 
