@@ -1,6 +1,6 @@
 [package]
 name = "rev-core"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["Ronit Gupta <ronitgupta138@gmail.com>"]
 description = "Autonomous reverse engineering engine and Model Context Protocol (MCP) server for binaries and applications."
