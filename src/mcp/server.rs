@@ -150,6 +150,20 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "scan_electron".into(),
+                description: "Scan an extracted Electron application directory for IPC communication channels, preload bridge endpoints, and security posture risks.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "dir": {
+                            "type": "string",
+                            "description": "Path to directory containing Electron scripts"
+                        }
+                    },
+                    "required": ["dir"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -445,6 +459,25 @@ impl McpServer {
                     l.record(&evidence);
                 }
                 json_result(&evidence)
+            }
+
+            "scan_electron" => {
+                let dir_str = match args.get("dir").and_then(|v| v.as_str()) {
+                    Some(d) => d,
+                    None => return error_result("Missing required argument: 'dir'"),
+                };
+
+                match crate::app::scan_electron_directory(dir_str) {
+                    Ok(report) => {
+                        let digest = compute_sha256(dir_str.as_bytes());
+                        let evidence = Evidence::new(dir_str, &digest, "scan_electron", &report, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Failed to scan Electron directory: {e}")),
+                }
             }
 
             "get_evidence_ledger" => {
