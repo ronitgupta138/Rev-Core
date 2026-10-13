@@ -432,6 +432,57 @@ pub fn cmd_electron(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn cmd_proc(pid: u32) -> anyhow::Result<()> {
+    let report = crate::process::parse_proc_maps(pid)?;
+
+    println!("\n{}", format!("=== Live Process Memory Forensic Report (PID: {}) ===", pid).cyan().bold());
+    println!("Total Mapped Memory: {:.2} MB ({} bytes)", report.total_mapped_bytes as f64 / (1024.0 * 1024.0), report.total_mapped_bytes);
+    println!("Executable Regions: {}", report.executable_regions_count.to_string().cyan());
+    println!("Anonymous Memory Regions: {}", report.anonymous_regions_count.to_string().yellow());
+    println!("Dangerous RWX Regions: {}", if report.rwx_regions_count > 0 { report.rwx_regions_count.to_string().red().bold() } else { "0 (Clean)".green() });
+
+    if !report.security_alerts.is_empty() {
+        println!("\n{}", "Active Security Alerts:".bold());
+        for alert in &report.security_alerts {
+            println!("  [!] {}", alert.red().bold());
+        }
+    }
+
+    println!("\n{}", "Sample Virtual Memory Segments:".bold());
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Address Range").fg(Color::Cyan),
+        Cell::new("Perms").fg(Color::Green),
+        Cell::new("Size (KB)").fg(Color::Yellow),
+        Cell::new("Path / Mapping").fg(Color::White),
+    ]);
+
+    for r in report.regions.iter().take(20) {
+        let (perms_color, perms_str) = if r.is_rwx {
+            (Color::Red, format!("{} (RWX)", r.perms))
+        } else if r.is_executable {
+            (Color::Green, r.perms.clone())
+        } else {
+            (Color::DarkGrey, r.perms.clone())
+        };
+
+        table.add_row(vec![
+            Cell::new(format!("0x{:08x}-0x{:08x}", r.start_addr, r.end_addr)),
+            Cell::new(perms_str).fg(perms_color),
+            Cell::new((r.size_bytes / 1024).to_string()),
+            Cell::new(r.pathname.as_deref().unwrap_or("[anonymous]")),
+        ]);
+    }
+
+    println!("{}\n", table);
+    if report.regions.len() > 20 {
+        println!("... and {} more memory regions (total {}).", report.regions.len() - 20, report.regions.len());
+    }
+
+    Ok(())
+}
+
 pub fn cmd_asar_unpack(path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
     println!("\n{}", format!("Unpacking ASAR: {} -> {}", path.display(), dest_dir.display()).cyan().bold());
     let archive = AsarArchive::open(path)?;

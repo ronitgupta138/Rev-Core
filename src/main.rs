@@ -101,6 +101,12 @@ enum Commands {
     /// List available external headless decompiler backends installed on this system
     Backends,
 
+    /// Live process virtual memory forensics and dangerous RWX page detection
+    Proc {
+        /// Target Process ID (PID)
+        pid: u32,
+    },
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -185,6 +191,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Backends => {
             cmd_backends()?;
+        }
+        Commands::Proc { pid } => {
+            cmd_proc(pid)?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {
