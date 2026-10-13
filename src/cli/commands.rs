@@ -312,6 +312,48 @@ pub fn cmd_crypto(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn cmd_wasm(path: &Path) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let report = crate::wasm::analyze_wasm(&bytes)?;
+
+    println!("\n{}", format!("=== WebAssembly Module: {} ===", path.display()).cyan().bold());
+    println!("WASM Version: {}", report.version.to_string().yellow());
+    println!("Sections Count: {}", report.sections_count.to_string().green());
+    println!("Declared Functions: {}", report.functions_count.to_string().cyan());
+
+    if let Some(mem) = report.memory {
+        println!("Memory Limits: Initial {} pages ({} KB), Max {:?}", mem.initial_pages, mem.initial_pages * 64, mem.maximum_pages);
+    }
+
+    if !report.exports.is_empty() {
+        println!("\n{}", "Exported Symbols:".bold());
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        table.set_header(vec![
+            Cell::new("Name").fg(Color::Cyan),
+            Cell::new("Kind").fg(Color::Green),
+            Cell::new("Index").fg(Color::Yellow),
+        ]);
+        for exp in &report.exports {
+            table.add_row(vec![
+                Cell::new(&exp.name),
+                Cell::new(&exp.kind),
+                Cell::new(exp.index.to_string()),
+            ]);
+        }
+        println!("{}\n", table);
+    }
+
+    if !report.imports.is_empty() {
+        println!("{}", "Imported Signatures:".bold());
+        for imp in &report.imports {
+            println!("  ├── {}::{} ({})", imp.module.cyan(), imp.name.green(), imp.kind);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn cmd_electron(path: &Path) -> anyhow::Result<()> {
     let report = crate::app::scan_electron_directory(path)?;
 

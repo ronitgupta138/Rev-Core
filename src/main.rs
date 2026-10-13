@@ -81,6 +81,12 @@ enum Commands {
         dir: PathBuf,
     },
 
+    /// Inspect WebAssembly (WASM) binary module, exports, imports, and sections
+    Wasm {
+        /// Target .wasm file path
+        file: PathBuf,
+    },
+
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
@@ -156,6 +162,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Electron { dir } => {
             cmd_electron(&dir)?;
+        }
+        Commands::Wasm { file } => {
+            cmd_wasm(&file)?;
         }
         Commands::Asar(asar) => match asar.command {
             AsarSubcommand::List { file } => {
