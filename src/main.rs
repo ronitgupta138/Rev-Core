@@ -1,0 +1,120 @@
+use clap::{Args, Parser, Subcommand};
+use rev_core::cli::*;
+use rev_core::mcp::McpServer;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "rev-core",
+    author = "Ronit Gupta <ronitgupta138@gmail.com>",
+    version,
+    about = "Autonomous reverse engineering engine and Model Context Protocol (MCP) server for binaries and applications.",
+    long_about = None
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Inspect binary headers, architecture, entrypoint, sections, and dependencies
+    Inspect {
+        /// Target binary file path (ELF, PE)
+        file: PathBuf,
+        /// Output findings as raw JSON
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+
+    /// Check security mitigations (NX, PIE, RELRO, Stack Canaries, ASLR)
+    Mitigations {
+        /// Target binary file path
+        file: PathBuf,
+    },
+
+    /// Disassemble raw x86_64 machine code instructions at an offset
+    Disasm {
+        /// Target binary file path
+        file: PathBuf,
+        /// Byte offset in file (decimal or 0x hex)
+        #[arg(long, default_value = "0")]
+        offset: String,
+        /// Number of bytes to decode
+        #[arg(long, default_value_t = 64)]
+        length: usize,
+        /// Maximum number of instructions to format
+        #[arg(long, default_value_t = 20)]
+        count: usize,
+    },
+
+    /// Electron ASAR archive inspection and extraction
+    Asar(AsarArgs),
+
+    /// Launch stdio Model Context Protocol (MCP) server for AI agents
+    Mcp,
+}
+
+#[derive(Args, Debug)]
+struct AsarArgs {
+    #[command(subcommand)]
+    command: AsarSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum AsarSubcommand {
+    /// List files and directories inside an ASAR archive
+    List {
+        /// Path to .asar file
+        file: PathBuf,
+    },
+    /// Unpack all contents of an ASAR archive to a destination directory
+    Unpack {
+        /// Path to .asar file
+        file: PathBuf,
+        /// Output destination directory
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Inspect { file, json } => {
+            cmd_inspect(&file, json)?;
+        }
+        Commands::Mitigations { file } => {
+            cmd_mitigations(&file)?;
+        }
+        Commands::Disasm {
+            file,
+            offset,
+            length,
+            count,
+        } => {
+            let parsed_offset = if offset.starts_with("0x") || offset.starts_with("0X") {
+                u64::from_str_radix(&offset[2..], 16)?
+            } else {
+                offset.parse::<u64>()?
+            };
+            cmd_disasm(&file, parsed_offset, length, count)?;
+        }
+        Commands::Asar(asar) => match asar.command {
+            AsarSubcommand::List { file } => {
+                cmd_asar_list(&file)?;
+            }
+            AsarSubcommand::Unpack { file, output } => {
+                cmd_asar_unpack(&file, &output)?;
+            }
+        },
+        Commands::Mcp => {
+            let server = McpServer::new();
+            server.run_stdio().await?;
+        }
+    }
+
+    Ok(())
+}

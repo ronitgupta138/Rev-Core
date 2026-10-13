@@ -1,0 +1,241 @@
+use crate::app::asar::AsarArchive;
+use crate::domain::compute_sha256;
+use crate::native::{analyze_elf, analyze_pe, disassemble_x86_64, RelroStatus};
+use colored::*;
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::{Cell, Color, Table};
+use std::fs;
+use std::path::Path;
+
+pub fn cmd_inspect(path: &Path, json_mode: bool) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let digest = compute_sha256(&bytes);
+
+    if json_mode {
+        if let Ok(elf) = analyze_elf(&bytes) {
+            println!("{}", serde_json::to_string_pretty(&elf)?);
+            return Ok(());
+        }
+        if let Ok(pe) = analyze_pe(&bytes) {
+            println!("{}", serde_json::to_string_pretty(&pe)?);
+            return Ok(());
+        }
+        anyhow::bail!("Unsupported binary format");
+    }
+
+    println!("\n{}", format!("=== Target: {} ===", path.display()).cyan().bold());
+    println!("SHA-256: {}", digest.yellow());
+    println!("File Size: {} bytes\n", bytes.len());
+
+    if let Ok(elf) = analyze_elf(&bytes) {
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        table.set_header(vec![
+            Cell::new("Property").fg(Color::Cyan),
+            Cell::new("Value").fg(Color::Green),
+        ]);
+
+        table.add_row(vec![Cell::new("Format"), Cell::new(&elf.class)]);
+        table.add_row(vec![Cell::new("Machine"), Cell::new(&elf.machine)]);
+        table.add_row(vec![Cell::new("Endianness"), Cell::new(&elf.endianness)]);
+        table.add_row(vec![Cell::new("Entrypoint"), Cell::new(format!("0x{:x}", elf.entrypoint))]);
+        table.add_row(vec![Cell::new("Segments"), Cell::new(elf.segments_count.to_string())]);
+        table.add_row(vec![Cell::new("Sections"), Cell::new(elf.sections_count.to_string())]);
+
+        println!("{}\n", table);
+
+        render_mitigations_table(&elf.mitigations.nx, &elf.mitigations.pie, &elf.mitigations.relro, &elf.mitigations.stack_canary, &elf.mitigations.fortify);
+
+        if !elf.dependencies.is_empty() {
+            println!("\n{}", "Dynamic Dependencies (DT_NEEDED):".bold());
+            for dep in &elf.dependencies {
+                println!("  ├── {}", dep.green());
+            }
+        }
+        return Ok(());
+    }
+
+    if let Ok(pe) = analyze_pe(&bytes) {
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        table.set_header(vec![
+            Cell::new("Property").fg(Color::Cyan),
+            Cell::new("Value").fg(Color::Green),
+        ]);
+
+        table.add_row(vec![Cell::new("Format"), Cell::new("Portable Executable (PE)")]);
+        table.add_row(vec![Cell::new("Machine"), Cell::new(&pe.machine)]);
+        table.add_row(vec![Cell::new("Entrypoint"), Cell::new(format!("0x{:x}", pe.entrypoint))]);
+        table.add_row(vec![Cell::new("Sections"), Cell::new(pe.sections_count.to_string())]);
+        table.add_row(vec![Cell::new("Subsystem"), Cell::new(format!("{}", pe.subsystem))]);
+
+        println!("{}\n", table);
+
+        let mut mit_table = Table::new();
+        mit_table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        mit_table.set_header(vec![
+            Cell::new("Mitigation").fg(Color::Cyan),
+            Cell::new("Status").fg(Color::Yellow),
+        ]);
+
+        add_mit_row(&mut mit_table, "ASLR (Dynamic Base)", pe.mitigations.aslr);
+        add_mit_row(&mut mit_table, "DEP / NX Compat", pe.mitigations.dep_nx);
+        add_mit_row(&mut mit_table, "Control Flow Guard (CFG)", pe.mitigations.cfg);
+        add_mit_row(&mut mit_table, "Structured Exception Handling", pe.mitigations.seh);
+
+        println!("{}\n", mit_table);
+
+        if !pe.imports.is_empty() {
+            println!("\n{}", "Imported Libraries:".bold());
+            for imp in &pe.imports {
+                println!("  ├── {}", imp.green());
+            }
+        }
+        return Ok(());
+    }
+
+    anyhow::bail!("Unrecognized or unsupported binary format for {}", path.display());
+}
+
+pub fn cmd_mitigations(path: &Path) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    println!("\n{}", format!("=== Mitigations for: {} ===", path.display()).cyan().bold());
+
+    if let Ok(elf) = analyze_elf(&bytes) {
+        render_mitigations_table(&elf.mitigations.nx, &elf.mitigations.pie, &elf.mitigations.relro, &elf.mitigations.stack_canary, &elf.mitigations.fortify);
+        return Ok(());
+    }
+
+    if let Ok(pe) = analyze_pe(&bytes) {
+        let mut mit_table = Table::new();
+        mit_table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+        mit_table.set_header(vec![
+            Cell::new("Mitigation").fg(Color::Cyan),
+            Cell::new("Status").fg(Color::Yellow),
+        ]);
+
+        add_mit_row(&mut mit_table, "ASLR (Dynamic Base)", pe.mitigations.aslr);
+        add_mit_row(&mut mit_table, "DEP / NX Compat", pe.mitigations.dep_nx);
+        add_mit_row(&mut mit_table, "Control Flow Guard (CFG)", pe.mitigations.cfg);
+        add_mit_row(&mut mit_table, "Structured Exception Handling", pe.mitigations.seh);
+
+        println!("{}\n", mit_table);
+        return Ok(());
+    }
+
+    anyhow::bail!("Could not parse binary to extract mitigations");
+}
+
+pub fn cmd_disasm(path: &Path, offset: u64, length: usize, max_instr: usize) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let start = offset as usize;
+    if start >= bytes.len() {
+        anyhow::bail!("Offset 0x{:x} is outside binary boundaries ({} bytes)", offset, bytes.len());
+    }
+
+    let end = (start + length).min(bytes.len());
+    let slice = &bytes[start..end];
+
+    let instructions = disassemble_x86_64(slice, offset, max_instr)?;
+
+    println!("\n{}", format!("=== Disassembly at 0x{:x} ({}) ===", offset, path.display()).cyan().bold());
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Address").fg(Color::Cyan),
+        Cell::new("Opcode (Hex)").fg(Color::DarkGrey),
+        Cell::new("Instruction").fg(Color::Green),
+    ]);
+
+    for instr in instructions {
+        table.add_row(vec![
+            Cell::new(format!("0x{:08x}", instr.ip)),
+            Cell::new(&instr.bytes),
+            Cell::new(&instr.op_str),
+        ]);
+    }
+
+    println!("{}\n", table);
+    Ok(())
+}
+
+pub fn cmd_asar_list(path: &Path) -> anyhow::Result<()> {
+    let archive = AsarArchive::open(path)?;
+    println!("\n{}", format!("=== ASAR Archive: {} ===", path.display()).cyan().bold());
+    println!("Total Files: {}", archive.metadata.total_files.to_string().green());
+    println!("Total Directories: {}", archive.metadata.total_dirs.to_string().cyan());
+    println!("Total Unpacked Size: {} bytes\n", archive.metadata.total_size.to_string().yellow());
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Type").fg(Color::Cyan),
+        Cell::new("Path").fg(Color::Green),
+        Cell::new("Size (Bytes)").fg(Color::Yellow),
+        Cell::new("Offset").fg(Color::DarkGrey),
+    ]);
+
+    for entry in archive.list() {
+        let type_cell = if entry.is_dir {
+            Cell::new("DIR").fg(Color::Cyan)
+        } else {
+            Cell::new("FILE").fg(Color::White)
+        };
+
+        table.add_row(vec![
+            type_cell,
+            Cell::new(&entry.path),
+            Cell::new(entry.size.to_string()),
+            Cell::new(format!("0x{:x}", entry.offset)),
+        ]);
+    }
+
+    println!("{}\n", table);
+    Ok(())
+}
+
+pub fn cmd_asar_unpack(path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
+    println!("\n{}", format!("Unpacking ASAR: {} -> {}", path.display(), dest_dir.display()).cyan().bold());
+    let archive = AsarArchive::open(path)?;
+    let count = archive.extract_all(dest_dir)?;
+    println!("{}", format!("Successfully extracted {} files to {}!", count, dest_dir.display()).green().bold());
+    Ok(())
+}
+
+fn render_mitigations_table(nx: &bool, pie: &bool, relro: &RelroStatus, canary: &bool, fortify: &bool) {
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Mitigation").fg(Color::Cyan),
+        Cell::new("Status").fg(Color::Yellow),
+    ]);
+
+    add_mit_row(&mut table, "NX / DEP (No-Execute)", *nx);
+    add_mit_row(&mut table, "PIE (Position Independent Executable)", *pie);
+
+    let (relro_str, relro_color) = match relro {
+        RelroStatus::Full => ("Full RELRO", Color::Green),
+        RelroStatus::Partial => ("Partial RELRO", Color::Yellow),
+        RelroStatus::None => ("No RELRO", Color::Red),
+    };
+    table.add_row(vec![
+        Cell::new("RELRO (Read-Only Relocations)"),
+        Cell::new(relro_str).fg(relro_color),
+    ]);
+
+    add_mit_row(&mut table, "Stack Canary (__stack_chk_fail)", *canary);
+    add_mit_row(&mut table, "Fortify Source (_chk)", *fortify);
+
+    println!("{}\n", table);
+}
+
+fn add_mit_row(table: &mut Table, name: &str, enabled: bool) {
+    let (text, color) = if enabled {
+        ("Enabled", Color::Green)
+    } else {
+        ("Disabled", Color::Red)
+    };
+    table.add_row(vec![Cell::new(name), Cell::new(text).fg(color)]);
+}
