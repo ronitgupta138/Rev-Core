@@ -201,6 +201,20 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "inspect_process_maps".into(),
+                description: "Inspect live process memory maps (/proc/[pid]/maps) to detect memory layout, mapped libraries, and dangerous RWX pages.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "pid": {
+                            "type": "integer",
+                            "description": "Target Process ID (PID)"
+                        }
+                    },
+                    "required": ["pid"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -578,6 +592,25 @@ impl McpServer {
                         json_result(&evidence)
                     }
                     Err(e) => error_result(format!("Decompilation failed: {e}")),
+                }
+            }
+
+            "inspect_process_maps" => {
+                let pid = match args.get("pid").and_then(|v| v.as_u64()) {
+                    Some(p) => p as u32,
+                    None => return error_result("Missing required argument: 'pid'"),
+                };
+
+                match crate::process::parse_proc_maps(pid) {
+                    Ok(report) => {
+                        let digest = compute_sha256(format!("pid_{pid}_{}", report.total_mapped_bytes).as_bytes());
+                        let evidence = Evidence::new(format!("proc_{pid}"), &digest, "inspect_process_maps", &report, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Failed to inspect process {pid} memory maps: {e}")),
                 }
             }
 
