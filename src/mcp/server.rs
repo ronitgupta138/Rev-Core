@@ -1,7 +1,7 @@
 use super::protocol::*;
 use crate::app::asar::AsarArchive;
 use crate::domain::{compute_sha256, Evidence, EvidenceLedger};
-use crate::native::{analyze_elf, analyze_pe, disassemble_x86_64};
+use crate::native::{analyze_elf, analyze_macho, analyze_pe, disassemble_x86_64};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
@@ -284,7 +284,16 @@ impl McpServer {
                     return json_result(&evidence);
                 }
 
-                error_result(format!("File at {path_str} is neither a valid ELF nor PE binary"))
+                // Try Mach-O
+                if let Ok(macho) = analyze_macho(&bytes) {
+                    let evidence = Evidence::new(path_str, &digest, "inspect_binary.macho", &macho, Vec::new());
+                    if let Ok(mut l) = self.ledger.lock() {
+                        l.record(&evidence);
+                    }
+                    return json_result(&evidence);
+                }
+
+                error_result(format!("File at {path_str} is neither a valid ELF, PE, nor Mach-O binary"))
             }
 
             "inspect_mitigations" => {
@@ -310,6 +319,14 @@ impl McpServer {
 
                 if let Ok(pe) = analyze_pe(&bytes) {
                     let evidence = Evidence::new(path_str, &digest, "inspect_mitigations.pe", &pe.mitigations, Vec::new());
+                    if let Ok(mut l) = self.ledger.lock() {
+                        l.record(&evidence);
+                    }
+                    return json_result(&evidence);
+                }
+
+                if let Ok(macho) = analyze_macho(&bytes) {
+                    let evidence = Evidence::new(path_str, &digest, "inspect_mitigations.macho", &macho.architectures, Vec::new());
                     if let Ok(mut l) = self.ledger.lock() {
                         l.record(&evidence);
                     }
