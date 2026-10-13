@@ -1,6 +1,6 @@
 use crate::app::asar::AsarArchive;
 use crate::domain::compute_sha256;
-use crate::native::{analyze_elf, analyze_pe, disassemble_x86_64, RelroStatus};
+use crate::native::{analyze_elf, analyze_macho, analyze_pe, disassemble_x86_64, RelroStatus};
 use colored::*;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
@@ -19,6 +19,10 @@ pub fn cmd_inspect(path: &Path, json_mode: bool) -> anyhow::Result<()> {
         }
         if let Ok(pe) = analyze_pe(&bytes) {
             println!("{}", serde_json::to_string_pretty(&pe)?);
+            return Ok(());
+        }
+        if let Ok(macho) = analyze_macho(&bytes) {
+            println!("{}", serde_json::to_string_pretty(&macho)?);
             return Ok(());
         }
         anyhow::bail!("Unsupported binary format");
@@ -95,6 +99,32 @@ pub fn cmd_inspect(path: &Path, json_mode: bool) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if let Ok(macho) = analyze_macho(&bytes) {
+        println!("{}", format!("Format: Mach-O (Fat/Universal: {})", macho.is_fat).green().bold());
+        for (i, arch) in macho.architectures.iter().enumerate() {
+            println!("\n--- Slice {} Architecture: {} ---", i, arch.cpu_type.cyan().bold());
+            let mut table = Table::new();
+            table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+            table.set_header(vec![
+                Cell::new("Mitigation").fg(Color::Cyan),
+                Cell::new("Status").fg(Color::Yellow),
+            ]);
+            add_mit_row(&mut table, "PIE (Position Independent Executable)", arch.mitigations.pie);
+            add_mit_row(&mut table, "NX / No-Heap Execution", arch.mitigations.nx);
+            add_mit_row(&mut table, "__RESTRICT Segment Protection", arch.mitigations.restricted_segment);
+            add_mit_row(&mut table, "Code Signature Present", arch.mitigations.code_signed);
+            println!("{}\n", table);
+
+            if !arch.dependencies.is_empty() {
+                println!("{}", "Linked Frameworks / Dylibs:".bold());
+                for dep in &arch.dependencies {
+                    println!("  ├── {}", dep.green());
+                }
+            }
+        }
+        return Ok(());
+    }
+
     anyhow::bail!("Unrecognized or unsupported binary format for {}", path.display());
 }
 
@@ -121,6 +151,24 @@ pub fn cmd_mitigations(path: &Path) -> anyhow::Result<()> {
         add_mit_row(&mut mit_table, "Structured Exception Handling", pe.mitigations.seh);
 
         println!("{}\n", mit_table);
+        return Ok(());
+    }
+
+    if let Ok(macho) = analyze_macho(&bytes) {
+        for (i, arch) in macho.architectures.iter().enumerate() {
+            println!("\n--- Slice {} Mitigations ({}) ---", i, arch.cpu_type.cyan().bold());
+            let mut table = Table::new();
+            table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+            table.set_header(vec![
+                Cell::new("Mitigation").fg(Color::Cyan),
+                Cell::new("Status").fg(Color::Yellow),
+            ]);
+            add_mit_row(&mut table, "PIE (Position Independent Executable)", arch.mitigations.pie);
+            add_mit_row(&mut table, "NX / No-Heap Execution", arch.mitigations.nx);
+            add_mit_row(&mut table, "__RESTRICT Segment Protection", arch.mitigations.restricted_segment);
+            add_mit_row(&mut table, "Code Signature Present", arch.mitigations.code_signed);
+            println!("{}\n", table);
+        }
         return Ok(());
     }
 
