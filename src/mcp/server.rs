@@ -1,7 +1,9 @@
 use super::protocol::*;
 use crate::app::asar::AsarArchive;
 use crate::domain::{compute_sha256, Evidence, EvidenceLedger};
-use crate::native::{analyze_elf, analyze_macho, analyze_pe, disassemble_x86_64};
+use crate::native::{
+    analyze_elf, analyze_macho, analyze_pe, decode_universal_slice, TargetArch,
+};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
@@ -74,6 +76,11 @@ impl McpServer {
                             "type": "integer",
                             "description": "Maximum instructions to decode (defaults to 20)",
                             "default": 20
+                        },
+                        "arch": {
+                            "type": "string",
+                            "description": "Architecture: x86_64, arm64, or riscv64",
+                            "default": "x86_64"
                         }
                     },
                     "required": ["path"]
@@ -396,6 +403,11 @@ impl McpServer {
                 let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let length = args.get("length").and_then(|v| v.as_u64()).unwrap_or(64) as usize;
                 let max_instr = args.get("max_instructions").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                let arch_str = args.get("arch").and_then(|v| v.as_str()).unwrap_or("x86_64");
+                let arch: TargetArch = match arch_str.parse() {
+                    Ok(a) => a,
+                    Err(e) => return error_result(format!("Invalid arch: {e}")),
+                };
 
                 let bytes = match fs::read(path_str) {
                     Ok(b) => b,
@@ -409,10 +421,10 @@ impl McpServer {
                 let end = (offset + length).min(bytes.len());
                 let slice = &bytes[offset..end];
 
-                match disassemble_x86_64(slice, offset as u64, max_instr) {
+                match decode_universal_slice(slice, offset as u64, arch, max_instr) {
                     Ok(instructions) => {
                         let digest = compute_sha256(slice);
-                        let evidence = Evidence::new(path_str, &digest, "disassemble_slice.x86_64", &instructions, Vec::new());
+                        let evidence = Evidence::new(path_str, &digest, format!("disassemble_slice.{arch_str}"), &instructions, Vec::new());
                         if let Ok(mut l) = self.ledger.lock() {
                             l.record(&evidence);
                         }
