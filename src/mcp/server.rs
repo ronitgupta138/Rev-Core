@@ -164,6 +164,20 @@ impl McpServer {
                 }),
             },
             McpTool {
+                name: "inspect_wasm".into(),
+                description: "Inspect WebAssembly (WASM) binary structure, memory allocations, function imports, and exported APIs.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to .wasm file"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
                 name: "get_evidence_ledger".into(),
                 description: "Retrieve all verified cryptographic Evidence records and open residual unknowns for this session.".into(),
                 input_schema: json!({
@@ -494,6 +508,29 @@ impl McpServer {
                         json_result(&evidence)
                     }
                     Err(e) => error_result(format!("Failed to scan Electron directory: {e}")),
+                }
+            }
+
+            "inspect_wasm" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let bytes = match fs::read(path_str) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file: {e}")),
+                };
+
+                match crate::wasm::analyze_wasm(&bytes) {
+                    Ok(report) => {
+                        let digest = compute_sha256(&bytes);
+                        let evidence = Evidence::new(path_str, &digest, "inspect_wasm", &report, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Failed to parse WASM module: {e}")),
                 }
             }
 
