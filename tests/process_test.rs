@@ -28,5 +28,5 @@ fn test_live_self_proc_maps() {
 
     assert_eq!(report.pid, pid);
     assert!(report.total_mapped_bytes > 0);
-    assert!(report.regions.len() > 0);
+    assert!(!report.regions.is_empty());
 }

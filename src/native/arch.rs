@@ -1,17 +1,12 @@
 use crate::domain::{RevError, RevResult};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TargetArch {
+    #[default]
     X86_64,
     Arm64,
     Riscv64,
-}
-
-impl Default for TargetArch {
-    fn default() -> Self {
-        Self::X86_64
-    }
 }
 
 impl std::str::FromStr for TargetArch {
@@ -76,7 +71,7 @@ fn decode_arm64_slice(
         let chunk: [u8; 4] = bytes[offset..offset + 4].try_into().unwrap();
         let word = u32::from_le_bytes(chunk);
         let ip = base_ip + offset as u64;
-        let hex_bytes = hex::encode(&chunk);
+        let hex_bytes = hex::encode(chunk);
 
         let (mnemonic, op_str) = decode_arm64_word(word);
 
@@ -160,7 +155,7 @@ fn decode_riscv64_slice(
         let chunk: [u8; 4] = bytes[offset..offset + 4].try_into().unwrap();
         let word = u32::from_le_bytes(chunk);
         let ip = base_ip + offset as u64;
-        let hex_bytes = hex::encode(&chunk);
+        let hex_bytes = hex::encode(chunk);
 
         let (mnemonic, op_str) = decode_riscv64_word(word);
 

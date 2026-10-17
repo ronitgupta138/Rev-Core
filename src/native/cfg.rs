@@ -131,15 +131,11 @@ pub fn build_cfg_x86_64(bytes: &[u8], rip: u64, max_instructions: usize) -> RevR
                     leaders.insert(next_ip);
                 }
             }
-            FlowControl::Call => {
-                if i + 1 < decoded.len() {
-                    leaders.insert(next_ip);
-                }
+            FlowControl::Call if i + 1 < decoded.len() => {
+                leaders.insert(next_ip);
             }
-            FlowControl::Return | FlowControl::Interrupt => {
-                if i + 1 < decoded.len() {
-                    leaders.insert(next_ip);
-                }
+            FlowControl::Return | FlowControl::Interrupt if i + 1 < decoded.len() => {
+                leaders.insert(next_ip);
             }
             _ => {}
         }

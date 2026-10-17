@@ -95,9 +95,9 @@ impl DecompilerBridge {
             }
         }
 
-        Err(format!(
-            "No headless decompiler (rizin, radare2, or ghidra) found in PATH. Install rizin via your package manager or use 'rev-core disasm' / 'rev-core cfg' for native in-process x86_64 analysis."
-        ))
+        Err(
+            "No headless decompiler (rizin, radare2, or ghidra) found in PATH. Install rizin via your package manager or use 'rev-core disasm' / 'rev-core cfg' for native in-process x86_64 analysis.".to_string()
+        )
     }
 }
 

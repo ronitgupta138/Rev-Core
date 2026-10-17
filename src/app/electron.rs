@@ -160,18 +160,16 @@ fn extract_first_arg(line: &str, pattern: &str) -> Option<String> {
 fn scan_script_for_security(content: &str, posture: &mut ElectronSecurityPosture) {
     if content.contains("nodeIntegration: true") || content.contains("nodeIntegration:true") {
         posture.node_integration = Some(true);
-    } else if content.contains("nodeIntegration: false") || content.contains("nodeIntegration:false") {
-        if posture.node_integration.is_none() {
-            posture.node_integration = Some(false);
-        }
+    } else if (content.contains("nodeIntegration: false") || content.contains("nodeIntegration:false"))
+        && posture.node_integration.is_none() {
+        posture.node_integration = Some(false);
     }
 
     if content.contains("contextIsolation: false") || content.contains("contextIsolation:false") {
         posture.context_isolation = Some(false);
-    } else if content.contains("contextIsolation: true") || content.contains("contextIsolation:true") {
-        if posture.context_isolation.is_none() {
-            posture.context_isolation = Some(true);
-        }
+    } else if (content.contains("contextIsolation: true") || content.contains("contextIsolation:true"))
+        && posture.context_isolation.is_none() {
+        posture.context_isolation = Some(true);
     }
 
     if content.contains("webSecurity: false") || content.contains("webSecurity:false") {
@@ -184,10 +182,9 @@ fn scan_script_for_security(content: &str, posture: &mut ElectronSecurityPosture
 
     if content.contains("sandbox: false") || content.contains("sandbox:false") {
         posture.sandbox = Some(false);
-    } else if content.contains("sandbox: true") || content.contains("sandbox:true") {
-        if posture.sandbox.is_none() {
-            posture.sandbox = Some(true);
-        }
+    } else if (content.contains("sandbox: true") || content.contains("sandbox:true"))
+        && posture.sandbox.is_none() {
+        posture.sandbox = Some(true);
     }
 }
 
