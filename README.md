@@ -11,7 +11,7 @@
 
 ### **Autonomous Reverse Engineering Engine & Model Context Protocol (MCP) Server in Systems Rust**
 
-[![GitHub Stars](https://badgen.net/github/stars/ronitgupta138/rev-core?icon=github&color=0891b2)](https://github.com/ronitgupta138/rev-core/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/ronitgupta138/Rev-Core?style=flat-square&logo=github&color=0891b2)](https://github.com/ronitgupta138/Rev-Core/stargazers)
 [![Crates.io](https://img.shields.io/badge/crates.io-v1.0.0-0891b2?style=flat-square&labelColor=0a0b0e&logo=rust&logoColor=white)](https://crates.io/crates/rev-core)
 [![Rust: 1.80+](https://img.shields.io/badge/Rust-1.80+-0891b2?style=flat-square&labelColor=0a0b0e&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-0891b2?style=flat-square&labelColor=0a0b0e)](LICENSE)
