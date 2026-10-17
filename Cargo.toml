@@ -1,15 +1,15 @@
 [package]
 name = "rev-core"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["Ronit Gupta <ronitgupta138@gmail.com>"]
 description = "Autonomous reverse engineering engine and Model Context Protocol (MCP) server for binaries and applications."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/ronitgupta138/rev-core"
-homepage = "https://github.com/ronitgupta138/rev-core"
+repository = "https://github.com/ronitgupta138/Rev-Core"
+homepage = "https://github.com/ronitgupta138/Rev-Core"
 documentation = "https://docs.rs/rev-core"
-keywords = ["reverse-engineering", "binary-analysis", "mcp", "elf", "asar"]
+keywords = ["reverse-engineering", "binary-analysis", "mcp", "elf", "decompilation"]
 categories = ["command-line-utilities", "development-tools::profiling", "parser-implementations"]
 
 [dependencies]
@@ -26,6 +26,8 @@ comfy-table = "7.1"
 anyhow = "1.0"
 thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+rustc-demangle = "0.1"
+cpp_demangle = "0.4"
 
 [[bin]]
 name = "rev-core"

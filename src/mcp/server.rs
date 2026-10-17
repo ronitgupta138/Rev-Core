@@ -229,6 +229,62 @@ impl McpServer {
                     "properties": {}
                 }),
             },
+            McpTool {
+                name: "audit_hardening".into(),
+                description: "Audit binary hardening posture: NX/DEP, PIE, Full/Partial RELRO, Stack Canaries, and flag dangerous C functions (gets, strcpy, system).".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to binary file (ELF, PE, Mach-O)"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
+                name: "lift_pseudocode".into(),
+                description: "Decompile x86_64 machine code basic blocks into clean, structured C-like pseudocode without external decompilers.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to binary file"
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Byte offset in file (default: 0)",
+                            "default": 0
+                        },
+                        "max_instructions": {
+                            "type": "integer",
+                            "description": "Maximum instructions to lift (default: 100)",
+                            "default": 100
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": "Optional function name override"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            McpTool {
+                name: "demangle_symbol".into(),
+                description: "Demangle Rust (legacy / v0) and C++ (Itanium) compiler ABI symbols into readable signatures.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "Mangled symbol string"
+                        }
+                    },
+                    "required": ["symbol"]
+                }),
+            },
         ]
     }
 
@@ -633,6 +689,81 @@ impl McpServer {
                 } else {
                     error_result("Failed to acquire ledger lock")
                 }
+            }
+
+            "audit_hardening" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+
+                let path = Path::new(path_str);
+                let bytes = match fs::read(path) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file {path_str}: {e}")),
+                };
+
+                match crate::analysis::audit_hardening(&bytes) {
+                    Ok(report) => {
+                        let digest = compute_sha256(&bytes);
+                        let evidence = Evidence::new(path_str, &digest, "audit_hardening", &report, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Hardening audit failed: {e}")),
+                }
+            }
+
+            "lift_pseudocode" => {
+                let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                    Some(p) => p,
+                    None => return error_result("Missing required argument: 'path'"),
+                };
+                let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
+                let max_instructions = args.get("max_instructions").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+                let symbol = args.get("symbol").and_then(|v| v.as_str());
+
+                let path = Path::new(path_str);
+                let bytes = match fs::read(path) {
+                    Ok(b) => b,
+                    Err(e) => return error_result(format!("Failed to read file {path_str}: {e}")),
+                };
+
+                let start = offset as usize;
+                let end = (start + max_instructions * 15).min(bytes.len());
+                if start >= bytes.len() {
+                    return error_result(format!("Offset 0x{:x} exceeds file size", offset));
+                }
+
+                match crate::native::build_cfg_x86_64(&bytes[start..end], offset, max_instructions) {
+                    Ok(cfg) => {
+                        let code = crate::decompile::lift_cfg_to_pseudocode(&cfg, symbol);
+                        let digest = compute_sha256(&bytes[start..end]);
+                        let evidence = Evidence::new(path_str, &digest, "lift_pseudocode", &code, Vec::new());
+                        if let Ok(mut l) = self.ledger.lock() {
+                            l.record(&evidence);
+                        }
+                        json_result(&evidence)
+                    }
+                    Err(e) => error_result(format!("Failed to construct CFG for lifting: {e}")),
+                }
+            }
+
+            "demangle_symbol" => {
+                let sym = match args.get("symbol").and_then(|v| v.as_str()) {
+                    Some(s) => s,
+                    None => return error_result("Missing required argument: 'symbol'"),
+                };
+
+                let demangled = crate::native::demangle_symbol(sym);
+                let is_mangled = crate::native::is_mangled(sym);
+                json_result(&serde_json::json!({
+                    "raw": sym,
+                    "demangled": demangled,
+                    "is_mangled": is_mangled
+                }))
             }
 
             _ => error_result(format!("Unknown tool: {name}")),

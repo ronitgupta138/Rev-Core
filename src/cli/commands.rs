@@ -529,3 +529,83 @@ fn add_mit_row(table: &mut Table, name: &str, enabled: bool) {
     };
     table.add_row(vec![Cell::new(name), Cell::new(text).fg(color)]);
 }
+
+pub fn cmd_hardening(path: &Path, json_mode: bool) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let report = crate::analysis::audit_hardening(&bytes)?;
+
+    if json_mode {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("\n{}", format!("=== Binary Hardening Posture: {} ===", path.display()).cyan().bold());
+    println!("Format: {} | Architecture: {}", report.binary_format.yellow(), report.architecture.green());
+    println!("Hardening Score: {}/100 | Grade: {}\n", report.hardening_score.to_string().bold(), report.security_grade.bold());
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL).apply_modifier(UTF8_ROUND_CORNERS);
+    table.set_header(vec![
+        Cell::new("Security Control").fg(Color::Cyan),
+        Cell::new("Status").fg(Color::Yellow),
+    ]);
+
+    add_mit_row(&mut table, "Stack Canary Guard", report.canary);
+    add_mit_row(&mut table, "NX / DEP Memory Protection", report.nx_dep);
+    add_mit_row(&mut table, "PIE / ASLR Randomization", report.pie_aslr);
+    add_mit_row(&mut table, "Fortify Source Check", report.fortify);
+
+    if let Some(relro) = &report.relro {
+        let (relro_str, relro_color) = match relro {
+            RelroStatus::Full => ("Full RELRO", Color::Green),
+            RelroStatus::Partial => ("Partial RELRO", Color::Yellow),
+            RelroStatus::None => ("No RELRO", Color::Red),
+        };
+        table.add_row(vec![
+            Cell::new("RELRO Protection"),
+            Cell::new(relro_str).fg(relro_color),
+        ]);
+    }
+
+    println!("{}\n", table);
+
+    if !report.dangerous_functions.is_empty() {
+        println!("{}", format!("⚠️ High-Risk / Insecure Function Calls Detected ({}):", report.dangerous_functions.len()).red().bold());
+        for finding in &report.dangerous_functions {
+            println!("  • {} [Risk: {:?}]", finding.function.red().bold(), finding.risk);
+            println!("    Reason: {}", finding.description.dimmed());
+            println!("    Fix:    {}\n", finding.recommendation.green());
+        }
+    } else {
+        println!("{}", "✅ No dangerous C standard library calls detected.".green().bold());
+    }
+
+    Ok(())
+}
+
+pub fn cmd_lift(path: &Path, offset: u64, max_instructions: usize, symbol: Option<&str>) -> anyhow::Result<()> {
+    let bytes = fs::read(path)?;
+    let start = offset as usize;
+    let end = (start + max_instructions * 15).min(bytes.len());
+    if start >= bytes.len() {
+        anyhow::bail!("Offset 0x{:x} exceeds file size", offset);
+    }
+
+    let slice = &bytes[start..end];
+    let cfg = crate::native::build_cfg_x86_64(slice, offset, max_instructions)?;
+    let pseudocode = crate::decompile::lift_cfg_to_pseudocode(&cfg, symbol);
+
+    println!("\n{}", format!("=== Decompiled C Pseudocode (0x{:x}) ===", offset).cyan().bold());
+    println!("{}", pseudocode);
+    Ok(())
+}
+
+pub fn cmd_demangle(symbol: &str) -> anyhow::Result<()> {
+    let demangled = crate::native::demangle_symbol(symbol);
+    let is_mangled = crate::native::is_mangled(symbol);
+
+    println!("\nRaw Symbol:       {}", symbol.yellow());
+    println!("Demangled Symbol: {}", demangled.green().bold());
+    println!("Scheme Detected:  {}", if is_mangled { "Rust / C++ Mangled ABI".cyan() } else { "Unmangled / Plain".dimmed() });
+    Ok(())
+}

@@ -113,6 +113,36 @@ enum Commands {
     /// Electron ASAR archive inspection and extraction
     Asar(AsarArgs),
 
+    /// Audit binary hardening posture, mitigations (NX, PIE, RELRO, Canaries), and dangerous C calls
+    Hardening {
+        /// Target binary file path
+        file: PathBuf,
+        /// Output findings as raw JSON
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+
+    /// Lift machine code basic blocks into readable high-level C-like pseudocode
+    Lift {
+        /// Target binary file path
+        file: PathBuf,
+        /// Byte offset in file (decimal or 0x hex)
+        #[arg(long, default_value = "0")]
+        offset: String,
+        /// Maximum number of instructions to process
+        #[arg(long, default_value_t = 100)]
+        max_instructions: usize,
+        /// Optional symbol name override
+        #[arg(long)]
+        symbol: Option<String>,
+    },
+
+    /// Demangle Rust (legacy / v0) and C++ (Itanium) compiler ABI symbols
+    Demangle {
+        /// Mangled symbol name (e.g. _ZN4core... or _Z1fv)
+        symbol: String,
+    },
+
     /// Launch stdio Model Context Protocol (MCP) server for AI agents
     Mcp,
 }
@@ -207,6 +237,25 @@ async fn main() -> anyhow::Result<()> {
                 cmd_asar_unpack(&file, &output)?;
             }
         },
+        Commands::Hardening { file, json } => {
+            cmd_hardening(&file, json)?;
+        }
+        Commands::Lift {
+            file,
+            offset,
+            max_instructions,
+            symbol,
+        } => {
+            let parsed_offset = if offset.starts_with("0x") || offset.starts_with("0X") {
+                u64::from_str_radix(&offset[2..], 16)?
+            } else {
+                offset.parse::<u64>()?
+            };
+            cmd_lift(&file, parsed_offset, max_instructions, symbol.as_deref())?;
+        }
+        Commands::Demangle { symbol } => {
+            cmd_demangle(&symbol)?;
+        }
         Commands::Mcp => {
             let server = McpServer::new();
             server.run_stdio().await?;

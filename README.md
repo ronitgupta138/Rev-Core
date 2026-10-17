@@ -12,11 +12,11 @@
 ### **Autonomous Reverse Engineering Engine & Model Context Protocol (MCP) Server in Systems Rust**
 
 [![GitHub Stars](https://img.shields.io/github/stars/ronitgupta138/Rev-Core?style=flat-square&logo=github&color=0891b2)](https://github.com/ronitgupta138/Rev-Core/stargazers)
-[![Crates.io](https://img.shields.io/badge/crates.io-v1.0.0-0891b2?style=flat-square&labelColor=0a0b0e&logo=rust&logoColor=white)](https://crates.io/crates/rev-core)
+[![Crates.io](https://img.shields.io/badge/crates.io-v2.0.0-0891b2?style=flat-square&labelColor=0a0b0e&logo=rust&logoColor=white)](https://crates.io/crates/rev-core)
 [![Rust: 1.80+](https://img.shields.io/badge/Rust-1.80+-0891b2?style=flat-square&labelColor=0a0b0e&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-0891b2?style=flat-square&labelColor=0a0b0e)](LICENSE)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-10b981?style=flat-square&labelColor=0a0b0e)](https://modelcontextprotocol.io/)
-[![Build Status](https://img.shields.io/badge/Tests-14%2F14%20Passing-10b981?style=flat-square&labelColor=0a0b0e)](#-test-verification)
+[![Build Status](https://img.shields.io/badge/Tests-25%2F25%20Passing-10b981?style=flat-square&labelColor=0a0b0e)](#-test-verification)
 [![Views](https://hits.sh/github.com/ronitgupta138/rev-core.svg?style=flat-square&label=Views&color=0891b2&labelColor=0a0b0e)](https://hits.sh/github.com/ronitgupta138/rev-core/)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=flat-square&labelColor=0a0b0e)](https://github.com/sponsors/ronitgupta138)
 
@@ -199,18 +199,24 @@ rev-core proc $(pgrep -n bash)
 | `inspect_wasm` | `path: string` | Parse WebAssembly module sections, memory limits, and exported API signatures. |
 | `inspect_process_maps`| `pid: number` | Inspect live process memory layout from `/proc/[pid]/maps` and flag RWX pages. |
 | `decompile_symbol` | `path, symbol, timeout_secs` | Decompile symbol via local headless decompiler bridges (rizin, r2, ghidra). |
+| `audit_hardening` | `path: string` | Audit binary security posture (NX, PIE, RELRO, Canaries) and flag dangerous C functions (`gets`, `strcpy`). |
+| `lift_pseudocode` | `path, offset, max_instructions, symbol` | Heuristically decompile basic blocks into clean, structured C-like pseudocode. |
+| `demangle_symbol` | `symbol: string` | Demangle Rust (legacy / v0) and C++ (Itanium) compiler ABI symbol names. |
 | `get_evidence_ledger` | *(none)* | Retrieve verified cryptographic Evidence records and open residual unknowns. |
 
 ---
 
 ## 📊 Benchmark Comparison: `rev-core` vs `rea`
 
-| Metric | `morluto/rea` (TypeScript) | `rev-core` v1.0.0 (Rust) |
+| Metric | `morluto/rea` (TypeScript) | `rev-core` v2.0.0 (Rust) |
 | :--- | :--- | :--- |
 | **Runtime Dependencies** | Node 22+, npm, Python, JDK | **Zero (single native binary)** |
 | **Startup / Tool Latency** | 1,200ms – 4,500ms | **< 2ms (sub-millisecond)** |
 | **Binary Memory (RSS)** | 200MB – 1.2GB (V8 + JVM) | **< 15MB** |
 | **Crash Protection** | High risk of V8 heap OOM | **Rust memory safety & zero panics** |
+| **Decompilation Lifter** | External 1GB+ Ghidra/Java required | **Embedded CFG-to-C Heuristic Lifter** |
+| **Security Hardening** | Basic file command string matches | **Full RELRO/NX/PIE/Canary + Dangerous C Calls** |
+| **Symbol Demangler** | External c++filt dependency | **Embedded zero-alloc Rust & C++ Demangler** |
 | **Disassembly Engine** | External process delegation | **In-process multi-arch decoder** |
 | **Electron ASAR Extraction** | External npm scripts / slow | **Native Chromium Pickle parser** |
 
@@ -224,7 +230,7 @@ Run the automated test suite:
 cargo test
 ```
 
-All 14 integration test suites pass with 100% green status:
+All 25 unit and integration test suites pass with 100% green status:
 * `tests/elf_test.rs` — Live Linux system ELF parsing and mitigation validation.
 * `tests/macho_test.rs` — 64-bit Apple Mach-O header and mitigation parsing.
 * `tests/disasm_test.rs` — x86_64 instruction decoder verification.
@@ -237,6 +243,10 @@ All 14 integration test suites pass with 100% green status:
 * `tests/process_test.rs` — Live `/proc/[pid]/maps` memory parsing and RWX detection.
 * `tests/bridge_test.rs` — Headless decompiler bridge detection and error handling.
 * `tests/evidence_test.rs` — Deterministic SHA-256 evidence hashing and ledger lifecycle.
+* `tests/hardening_test.rs` — Binary hardening mitigation audit and dangerous C call detection.
+* `tests/demangle_test.rs` — Rust legacy, Rust v0, and C++ Itanium ABI symbol demangling.
+* `tests/lifter_test.rs` — Reconstructing structured C pseudocode from x86_64 basic blocks.
+* `tests/mcp_test.rs` — Model Context Protocol tool catalog validation.
 
 ---
 
